@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 
 from . import clock
 from .seed import NO_PICKUP_PINCODES
-from .speech import PERIODS, slot_text
+from .speech import PERIODS, day_word_en, ordinal_date_en, slot_text
 
 MIN_LEAD = timedelta(hours=2)
 MAX_SLOTS = 9
@@ -27,7 +27,8 @@ def available_slots(pincode: str) -> list[dict]:
     for offset in range(MAX_DAYS_AHEAD + 1):
         day = today + timedelta(days=offset)
         day_slots = [
-            {"slot_id": f"{day.isoformat()}_{period}", "slot_text": slot_text(day, period, today)}
+            {"slot_id": f"{day.isoformat()}_{period}", "slot_text": slot_text(day, period, today),
+             "date_en": ordinal_date_en(day), "day_en": day_word_en(day, today)}
             for period, info in PERIODS.items()
             if datetime(day.year, day.month, day.day, info["start"], tzinfo=clock.IST) - now >= MIN_LEAD
         ]

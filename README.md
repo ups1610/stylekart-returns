@@ -28,10 +28,10 @@ Interactive docs are served at `/docs`.
 
 | # | Endpoint | Ringg mechanism | Purpose |
 |---|---|---|---|
-| 1 | `GET /customers/by-phone/{phone}` | Action node after greeting | Caller's name, `email_masked` (e.g. `pra****@gmail.com`) and up to 5 recent items. Returns `found: false` (HTTP 200) for an unknown number |
+| 1 | `GET /customers/by-phone/{phone}` | Action node after greeting | Caller's name, `email_masked` (e.g. `pra****@gmail.com`) and up to 5 recent items, each with `delivered_on_en` (e.g. "5th November"). Returns `found: false` (HTTP 200) for an unknown number |
 | 2 | `POST /returns/eligibility` | Action node after item confirmed | `eligible`, `reason_code`, `days_left` / `days_past`, `existing_return_status` (only for `ALREADY_RETURNED`), `say` |
-| 3 | `GET /pickup-slots/{order_id}` | Action node after reason captured | Up to 9 slots across the next 3 days that still have pickups, with `slot_id` and `slot_text` |
-| 4 | `POST /returns` | On-call tool on booking agent, after "haan" | Creates the return; returns spelled-out ID, pickup text, refund ETA. Emails a confirmation (plus a bank-details link for COD) |
+| 3 | `GET /pickup-slots/{order_id}` | Action node after reason captured | Up to 9 slots across the next 3 days that still have pickups, with `slot_id`, `slot_text`, `date_en` ("7th November") and `day_en` ("today" / "tomorrow" / null) |
+| 4 | `POST /returns` | On-call tool on booking agent, after "haan" | Creates the return; returns spelled-out ID, pickup text, `pickup_date_en`, refund ETA. Emails a confirmation (plus a bank-details link for COD) |
 | 5 | `POST /callbacks` | On-call tool on callback agent | Books a callback; emails a confirmation if the number belongs to a customer |
 | 6 | `GET /refunds/{order_id}` | On-call tool on order agent | Read-only refund status |
 | 7 | `POST /quality-tickets` | On-call tool on ineligible agent | Damaged or wrong item that can't be returned; emails a photo upload link |

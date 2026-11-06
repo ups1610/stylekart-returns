@@ -310,3 +310,40 @@ def test_seed_dates_follow_frozen_clock(client):
     reset_data()
     body = elig(client, "SK1008", "SK1008-1").json()
     assert body["eligible"] and body["days_left"] == 0
+
+
+# ---------------------------------------------------------------- English ordinal dates
+
+def test_ordinal_date_en():
+    from datetime import date
+
+    from app.speech import ordinal_date_en
+    expected = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 5: "5th", 11: "11th", 12: "12th", 13: "13th",
+                21: "21st", 22: "22nd", 23: "23rd", 31: "31st"}
+    for day, text in expected.items():
+        assert ordinal_date_en(date(2026, 12, day)) == f"{text} December", day
+    assert ordinal_date_en(date(2026, 11, 5)) == "5th November"
+
+
+def test_lookup_has_delivered_on_en(client):
+    items = client.get(f"/customers/by-phone/{ANANYA}").json()["items"]
+    assert items[0]["delivered_on_en"] == "3rd November"
+    assert items[0]["delivered_on_text"] == "3 November ko deliver hua tha (3 din pehle)"  # unchanged
+    in_transit = [i for i in client.get("/customers/by-phone/9953260051").json()["items"]
+                  if i["status"] == "in_transit"]
+    assert in_transit[0]["delivered_on_en"] is None
+
+
+def test_slots_have_date_en_and_day_en(client):
+    slots = client.get("/pickup-slots/SK1001").json()["slots"]
+    by_day = {s["slot_id"].split("_")[0]: (s["date_en"], s["day_en"]) for s in slots}
+    assert by_day == {"2026-11-06": ("6th November", "today"),
+                      "2026-11-07": ("7th November", "tomorrow"),
+                      "2026-11-08": ("8th November", None)}
+    assert slots[0]["slot_text"] == "aaj dopahar 12 se 4 baje"  # unchanged
+
+
+def test_return_has_pickup_date_en(client):
+    body = book(client, "SK1001", "SK1001-1", slot="2026-11-08_morning").json()
+    assert body["pickup_date_en"] == "8th November"
+    assert book(client, "SK1001", "SK1001-1").json()["pickup_date_en"] == "8th November"  # repeat call

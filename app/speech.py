@@ -26,6 +26,25 @@ def date_text(d: date) -> str:
     return f"{d.day} {MONTHS[d.month - 1]}"
 
 
+def ordinal_date_en(d: date) -> str:
+    """2026-11-05 -> '5th November', so the agent says "fifth", not "five". 11-13 take "th"."""
+    if 11 <= d.day % 100 <= 13:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(d.day % 10, "th")
+    return f"{d.day}{suffix} {MONTHS[d.month - 1]}"
+
+
+def day_word_en(d: date, today: date) -> str | None:
+    """'today' / 'tomorrow', or None for later days."""
+    return {0: "today", 1: "tomorrow"}.get((d - today).days)
+
+
+def slot_date(slot_id: str) -> date:
+    """'2026-11-07_evening' -> date(2026, 11, 7)."""
+    return date.fromisoformat(slot_id.split("_", 1)[0])
+
+
 def delivered_text(delivered_on: date, today: date) -> str:
     days = (today - delivered_on).days
     if days == 0:

@@ -34,7 +34,7 @@ from .db import get_conn, tx
 from .phones import normalize_phone
 from .seed import reset_data
 from .slots import available_slots, describe_slot
-from .speech import amount_text, delivered_text, spell_id
+from .speech import amount_text, delivered_text, ordinal_date_en, slot_date, spell_id
 
 SLOW_CREATE_SECONDS = float(os.environ.get("SLOW_CREATE_SECONDS", "5"))
 MAX_ITEMS_LISTED = 5
@@ -138,6 +138,7 @@ def return_body(ret: dict, item: dict, already_existed: bool) -> dict:
         "already_existed": already_existed,
         "item_name": item["name"],
         "pickup_text": pickup,
+        "pickup_date_en": ordinal_date_en(slot_date(ret["slot_id"])),
         "address_short": item["address_short"],
         "refund_amount_text": amount_text(ret["refund_amount"]),
         "refund_eta_text": refund_eta_text(item["payment_mode"]),
@@ -186,15 +187,19 @@ def customer_by_phone(phone: str):
     items = []
     for r in rows[:MAX_ITEMS_LISTED]:
         if r["status"] == "delivered":
-            when = delivered_text(datetime.fromisoformat(r["delivered_on"]).date(), today)
+            delivered_on = datetime.fromisoformat(r["delivered_on"]).date()
+            when = delivered_text(delivered_on, today)
+            when_en = ordinal_date_en(delivered_on)
         else:
             when = "abhi deliver nahi hua (raste mein hai)"
+            when_en = None
         items.append({
             "order_id": r["order_id"],
             "item_id": r["item_id"],
             "item_name": r["name"],
             "status": r["status"],
             "delivered_on_text": when,
+            "delivered_on_en": when_en,
             "payment_mode": r["payment_mode"],
         })
 
