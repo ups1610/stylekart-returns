@@ -13,6 +13,9 @@ Admin endpoints for testing and evals:
   POST /admin/reset   GET /admin/state/{phone}   POST /admin/map-phone
   POST /admin/clock   GET /admin/events
 
+Emails (app/mailer.py) go out through Brevo in a background task, so they never
+slow down or break a response. Their links open the pages in app/pages.py.
+
 Every response carries a `say` field: a short Hinglish line the agent can read
 out as-is. Errors use the same shape: {"detail": {"code", "say"}}.
 """
@@ -23,10 +26,10 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from . import clock, policy
+from . import clock, mailer, notify, pages, policy
 from .db import get_conn, tx
 from .phones import normalize_phone
 from .seed import reset_data
@@ -51,9 +54,29 @@ app = FastAPI(
     description="Mock e-commerce backend for the StyleKart Ringg voice agent.",
     lifespan=lifespan,
 )
+app.include_router(pages.router)
 
 
 # ---------------------------------------------------------------- helpers
+
+def queue_email(tasks: BackgroundTasks, customer: dict, kind: str, build) -> bool:
+    """Build an email now (this creates its links) and send it after the response.
+
+    `build` returns (subject, html, text). Any error is recorded, never raised.
+    """
+    try:
+        subject, html, text = build()
+    except Exception as exc:
+        try:
+            mailer.record(customer.get("customer_id"), customer["email"], f"({kind})", kind,
+                          "failed", f"build error: {type(exc).__name__}: {exc}"[:300])
+        except Exception:
+            pass
+        return False
+    tasks.add_task(mailer.send_email, customer.get("customer_id"), customer["email"],
+                   customer.get("full_name") or customer.get("first_name", ""), subject, html, text, kind)
+    return True
+
 
 def log_event(endpoint: str, request: dict | None, status: int, response: dict | None) -> None:
     with tx() as conn:
@@ -79,7 +102,8 @@ def load_item(endpoint: str, req: dict, order_id: str, item_id: str, phone: str 
     """Fetch an item with its order and owner; enforce that it belongs to the caller."""
     row = get_conn().execute(
         """SELECT i.*, o.customer_id, o.payment_mode, o.behaviour,
-                  c.phone AS owner_phone, c.address_short, c.pincode, c.first_name
+                  c.phone AS owner_phone, c.address_short, c.pincode, c.first_name,
+                  c.full_name, c.email
            FROM items i JOIN orders o ON o.id = i.order_id
            JOIN customers c ON c.id = o.customer_id
            WHERE i.id = ? AND i.order_id = ?""",
@@ -101,7 +125,7 @@ def existing_return(item_id: str) -> dict | None:
 def refund_eta_text(payment_mode: str) -> str:
     if payment_mode == "cod":
         return ("Cash on delivery order hai, isliye refund ke liye bank details chahiye. "
-                "Humne aapko SMS par ek link bheja hai. Details milne ke 5 se 7 din mein refund aa jayega.")
+                "Humne aapke registered email par ek link bheja hai. Details milne ke 5 se 7 din mein refund aa jayega.")
     return "Pickup ke baad 5 se 7 din mein refund original payment method mein aa jayega."
 
 
@@ -117,7 +141,8 @@ def return_body(ret: dict, item: dict, already_existed: bool) -> dict:
         "address_short": item["address_short"],
         "refund_amount_text": amount_text(ret["refund_amount"]),
         "refund_eta_text": refund_eta_text(item["payment_mode"]),
-        "cod_sms_sent": cod,
+        "cod_link_emailed": cod,
+        "cod_sms_sent": cod,  # deprecated alias of cod_link_emailed, kept for existing agent configs
         "say": (f"Aapka return book ho gaya hai. Return ID hai {spell_id(ret['id'])}. "
                 f"Pickup {pickup}, {item['address_short']} wale address par hoga."),
     }
@@ -178,6 +203,7 @@ def customer_by_phone(phone: str):
         "customer_id": cust["id"],
         "first_name": cust["first_name"],
         "full_name": cust["full_name"],
+        "email_masked": mailer.mask_email(cust["email"]),
         "item_count": len(items),
         "items": items,
         "items_summary": summary,
@@ -253,7 +279,7 @@ class ReturnIn(BaseModel):
 
 
 @app.post("/returns")
-def create_return(body: ReturnIn):
+def create_return(body: ReturnIn, tasks: BackgroundTasks):
     ep, req = "POST /returns", body.model_dump()
     item = load_item(ep, req, body.order_id, body.item_id, body.phone)
 
@@ -295,6 +321,10 @@ def create_return(body: ReturnIn):
 
     # Test hook: the record is saved, but the reply is slow enough to look like
     # a timeout. A retry must return this same return, never a second one.
+    if not already:
+        queue_email(tasks, item, "return_booked",
+                    lambda: notify.return_booked(ret, item, mailer.public_base_url()))
+
     if item["behaviour"] == "slow_create" and not already:
         time.sleep(SLOW_CREATE_SECONDS)
 
@@ -311,7 +341,7 @@ class QualityTicketIn(BaseModel):
 
 
 @app.post("/quality-tickets")
-def quality_ticket(body: QualityTicketIn):
+def quality_ticket(body: QualityTicketIn, tasks: BackgroundTasks):
     ep, req = "POST /quality-tickets", body.model_dump()
     item = load_item(ep, req, body.order_id, body.item_id, body.phone)
     with tx() as conn:
@@ -320,12 +350,16 @@ def quality_ticket(body: QualityTicketIn):
         conn.execute("INSERT INTO tickets VALUES (?, 'quality', ?, ?, ?, ?, ?)",
                      (tid, item["owner_phone"], item["order_id"], item["id"],
                       body.issue.strip(), clock.now_ist().isoformat()))
+    queue_email(tasks, item, "quality_ticket",
+                lambda: notify.quality_ticket(tid, item, body.issue.strip(), mailer.public_base_url()))
     return ok(ep, req, {
         "ticket_id": tid,
         "ticket_id_spoken": spell_id(tid),
-        "photo_link_sms_sent": True,
+        "photo_link_emailed": True,
+        "photo_link_sms_sent": True,  # deprecated alias of photo_link_emailed
         "say": (f"Maine aapki complaint register kar di hai, ticket number {spell_id(tid)}. "
-                "Item ki photo upload karne ke liye SMS par link bheja hai. Team 48 ghante mein contact karegi."),
+                "Item ki photo upload karne ke liye aapke registered email par link bheja hai. "
+                "Team 48 ghante mein contact karegi."),
     })
 
 
@@ -338,7 +372,7 @@ class CallbackIn(BaseModel):
 
 
 @app.post("/callbacks")
-def callback(body: CallbackIn):
+def callback(body: CallbackIn, tasks: BackgroundTasks):
     ep, req = "POST /callbacks", body.model_dump()
     phone = normalize_phone(body.phone)
     if not phone:
@@ -349,9 +383,15 @@ def callback(body: CallbackIn):
         cid = f"CB{70101 + seq}"
         conn.execute("INSERT INTO tickets VALUES (?, 'callback', ?, NULL, NULL, ?, ?)",
                      (cid, phone, f"{body.topic.strip()} | when: {when}", clock.now_ist().isoformat()))
+    cust = get_conn().execute("SELECT id AS customer_id, * FROM customers WHERE phone = ?", (phone,)).fetchone()
+    if cust is not None:
+        cust = dict(cust)
+        queue_email(tasks, cust, "callback",
+                    lambda: notify.callback_booked(cid, cust["first_name"], body.topic.strip(), when))
     return ok(ep, req, {
         "callback_id": cid,
         "callback_text": when,
+        "confirmation_emailed": cust is not None,
         "say": f"Theek hai, hamari team {when} aapko call karegi.",
     })
 
@@ -409,7 +449,11 @@ def admin_state(phone: str):
     marks = ",".join("?" * len(order_ids))
     returns = [dict(r) for r in conn.execute(f"SELECT * FROM returns WHERE order_id IN ({marks})", order_ids)]
     tickets = [dict(t) for t in conn.execute("SELECT * FROM tickets WHERE phone = ?", (cust["phone"],))]
-    return {"customer": dict(cust), "orders": orders, "returns": returns, "tickets": tickets}
+    emails = [dict(e) for e in conn.execute("SELECT * FROM emails WHERE customer_id = ? ORDER BY id",
+                                            (cust["id"],))]
+    customer = dict(cust)
+    customer["email"] = mailer.mask_email(customer["email"])  # never expose the full address
+    return {"customer": customer, "orders": orders, "returns": returns, "tickets": tickets, "emails": emails}
 
 
 class MapPhoneIn(BaseModel):

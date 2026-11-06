@@ -4,6 +4,9 @@ Delivery dates are set relative to *today* (India time) every time the data is
 reset, so "delivered 14 days ago" is always the last eligible day, whatever
 day you run the evals.
 
+Every customer has an email. Dummy customers get <firstname>@example.com, which the
+mailer only logs and never sends. Real addresses are listed in REAL_EMAILS.
+
 Set DEMO_PHONE to your own number so a real call finds Ananya's account.
 Any other seed customer can be pointed at your number with POST /admin/map-phone.
 """
@@ -12,7 +15,7 @@ import os
 from datetime import timedelta
 
 from . import clock
-from .db import tx
+from .db import ALL_TABLES, tx
 from .phones import normalize_phone
 
 DEMO_PHONE = normalize_phone(os.environ.get("DEMO_PHONE", "+919000000001"))
@@ -74,7 +77,7 @@ CUSTOMERS = [
         ("SK1017", "prepaid", None, [("1", "blue denim jacket", "outerwear", 2799, "delivered", 19)]),
         ("SK1018", "prepaid", None, [("1", "cotton boxer briefs pack of 2", "innerwear", 599, "delivered", 5)]),
     ]),
-    # Anant: cash-on-delivery kurta (refund needs bank details via SMS), plus a shirt still in transit.
+    # Anant: cash-on-delivery kurta (refund needs bank details via an emailed link), plus a shirt in transit.
     ("C14", "Anant Jakhmola", "+919953260051", "Rajpur Road, Dehradun", "248001", [
         ("SK1019", "cod", None, [("1", "beige linen kurta", "ethnicwear", 1499, "delivered", 4)]),
         ("SK1020", "prepaid", None, [("1", "striped oxford shirt", "topwear", 1399, "in_transit", None)]),
@@ -87,7 +90,22 @@ CUSTOMERS = [
         ]),
         ("SK1022", "prepaid", None, [("1", "navy puffer jacket", "outerwear", 3999, "delivered", 35)]),
     ]),
+    # Jai: last day of the return window, plus a personalised (non-returnable) item for a quality ticket.
+    ("C16", "Jai Khandelwal", "+919166017069", "Malviya Nagar, Jaipur", "302017", [
+        ("SK1023", "prepaid", None, [("1", "tan suede chelsea boots", "footwear", 4299, "delivered", 14)]),
+        ("SK1024", "prepaid", None, [("1", "name-printed cotton t-shirt", "personalised", 899, "delivered", 3)]),
+    ]),
 ]
+
+# Real inboxes. Anyone not listed gets <firstname>@example.com, which is never sent.
+REAL_EMAILS = {
+    "C13": "pratapsinghupendra96@gmail.com",
+    "C15": "rishabhthakur046@gmail.com",
+}
+
+
+def email_for(cid: str, full_name: str) -> str:
+    return REAL_EMAILS.get(cid) or f"{full_name.split()[0].lower()}@example.com"
 
 # Pincodes where the courier has no pickup capacity (tests the no-slot fallback).
 NO_PICKUP_PINCODES = {"194101"}
@@ -97,12 +115,13 @@ def reset_data() -> None:
     today = clock.today_ist()
     now = clock.now_ist().isoformat()
     with tx() as conn:
-        for table in ("events", "tickets", "returns", "items", "orders", "customers"):
+        for table in ALL_TABLES:
             conn.execute(f"DELETE FROM {table}")
         for cid, full_name, phone, address, pincode, orders in CUSTOMERS:
             conn.execute(
-                "INSERT INTO customers VALUES (?, ?, ?, ?, ?, ?)",
-                (cid, full_name.split()[0], full_name, normalize_phone(phone), address, pincode),
+                "INSERT INTO customers VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (cid, full_name.split()[0], full_name, normalize_phone(phone),
+                 email_for(cid, full_name), address, pincode),
             )
             for order_id, payment, behaviour, items in orders:
                 delivered_days = [i[5] for i in items if i[5] is not None]

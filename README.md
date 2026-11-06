@@ -28,20 +28,20 @@ Interactive docs are served at `/docs`.
 
 | # | Endpoint | Ringg mechanism | Purpose |
 |---|---|---|---|
-| 1 | `GET /customers/by-phone/{phone}` | Action node after greeting | Caller's name and up to 5 recent items. Returns `found: false` (HTTP 200) for an unknown number |
+| 1 | `GET /customers/by-phone/{phone}` | Action node after greeting | Caller's name, `email_masked` (e.g. `pra****@gmail.com`) and up to 5 recent items. Returns `found: false` (HTTP 200) for an unknown number |
 | 2 | `POST /returns/eligibility` | Action node after item confirmed | `eligible`, `reason_code`, `days_left` / `days_past`, `say` |
 | 3 | `GET /pickup-slots/{order_id}` | Action node after reason captured | Up to 6 slots with `slot_id` and `slot_text` |
-| 4 | `POST /returns` | On-call tool on booking agent, after "haan" | Creates the return; returns spelled-out ID, pickup text, refund ETA |
-| 5 | `POST /callbacks` | On-call tool on callback agent | Books a callback |
+| 4 | `POST /returns` | On-call tool on booking agent, after "haan" | Creates the return; returns spelled-out ID, pickup text, refund ETA. Emails a confirmation (plus a bank-details link for COD) |
+| 5 | `POST /callbacks` | On-call tool on callback agent | Books a callback; emails a confirmation if the number belongs to a customer |
 | 6 | `GET /refunds/{order_id}` | On-call tool on order agent | Read-only refund status |
-| 7 | `POST /quality-tickets` | On-call tool on ineligible agent | Damaged or wrong item that can't be returned; sends photo link |
+| 7 | `POST /quality-tickets` | On-call tool on ineligible agent | Damaged or wrong item that can't be returned; emails a photo upload link |
 
 Admin endpoints, for tests and evals:
 
 | Endpoint | Use |
 |---|---|
 | `POST /admin/reset` | Restore all seed data (run between eval calls) |
-| `GET /admin/state/{phone}` | Everything for one customer: orders, returns, tickets. Before/after evidence |
+| `GET /admin/state/{phone}` | Everything for one customer: orders, returns, tickets, emails (email address masked). Before/after evidence |
 | `POST /admin/map-phone` | `{"phone": "+91...", "customer_id": "C04"}` points your real number at any seed customer |
 | `POST /admin/clock` | `{"now": "2026-11-06T23:50:00"}` freezes India time; `{"now": null}` unfreezes. Call `/admin/reset` after freezing so seed dates follow |
 | `GET /admin/events?limit=50` | Log of every business API call, for checking "correct API calls" in evals |
@@ -57,6 +57,33 @@ Errors return `{"detail": {"code": "...", "say": "..."}}`:
 | 409 | `WINDOW_EXPIRED`, `NON_RETURNABLE`, `NOT_DELIVERED` | Create attempted for an ineligible item |
 | 422 | `SLOT_UNAVAILABLE` | Slot not currently offered; `available_slots` lists valid ones |
 | 500 | `UPSTREAM_ERROR` | Simulated failure (Tanya's order) |
+
+## Emails
+
+Emails replace the old "SMS" promises. They are sent through the
+[Brevo](https://www.brevo.com) HTTP API in a background task, so a slow or failing
+mail provider never breaks or delays the response the voice agent is waiting for.
+
+| Trigger | Email | Link opens |
+|---|---|---|
+| `POST /returns` creates a return | Return booked: ID, item, pickup time, refund | Return status page; COD orders also get a bank-details form |
+| `POST /quality-tickets` | Complaint registered | Photo upload page |
+| `POST /callbacks` for a known customer | Callback confirmation | None |
+
+- A repeated `POST /returns` for the same item does not send a second email.
+- Nothing is sent when `BREVO_API_KEY` is unset or the address ends in `@example.com`
+  (all dummy customers). The email is only logged.
+- Every email is recorded as `sent`, `logged` or `failed` (with the error) and shown in
+  `GET /admin/state/{phone}`.
+- Links are `PUBLIC_BASE_URL/l/<random token>`. The bank form keeps only the last 4
+  account digits, and the photo upload keeps only file metadata (name, type, size).
+- Response fields `cod_link_emailed` and `photo_link_emailed` say whether a link went out.
+  The older `cod_sms_sent` / `photo_link_sms_sent` fields are kept as aliases for existing agent configs.
+
+To send real email: create a free Brevo account, verify a sender address
+(Senders & IP → Senders), create an API key (SMTP & API → API keys), then set
+`BREVO_API_KEY` and `MAIL_FROM`. Set `PUBLIC_BASE_URL` to the address where this API is
+reachable, or the links in the emails won't open.
 
 ## Return policy
 
@@ -85,16 +112,19 @@ Delivery dates are relative to today (India time), recomputed on every reset.
 | C06 | Kabir | +919000000006 | SK1009 innerwear pack | Non-returnable |
 | C07 | Isha | +919000000007 | SK1010 saree, in transit | Not delivered |
 | C08 | Dev | +919000000008 | SK1011 shirt, return RT40011 booked | Already returned |
-| C09 | Neha | +919000000009 | SK1012 kurta, cash on delivery | SMS link for bank details |
+| C09 | Neha | +919000000009 | SK1012 kurta, cash on delivery | Emailed link for bank details |
 | C10 | Sahil | +919000000010 | SK1013 jeans, pincode 194101 | No pickup slots |
 | C11 | Tanya | +919000000011 | SK1014 dupatta | Eligibility API returns 500 |
 | C12 | Vikram | +919000000012 | SK1015 polo | Create-return is slow (looks like a timeout) but saves; retry must not duplicate |
 | C13 | Upendra Singh | +91 75050 62257 | SK1016 sneakers 2d, SK1017 denim jacket 19d, SK1018 boxer briefs | Real calls: choose between orders; one returnable, one expired, one non-returnable |
-| C14 | Anant Jakhmola | +91 99532 60051 | SK1019 linen kurta (COD) 4d, SK1020 shirt in transit | Real calls: COD refund via SMS link; not delivered |
+| C14 | Anant Jakhmola | +91 99532 60051 | SK1019 linen kurta (COD) 4d, SK1020 shirt in transit | Real calls: COD refund via emailed bank-details link; not delivered |
 | C15 | Rishabh Thakur | +91 91492 62211 | SK1021: chinos + henley 6d, SK1022 puffer (refunded) | Real calls: return one item of two; refund status |
+| C16 | Jai Khandelwal | +91 91660 17069 | SK1023 chelsea boots, exactly 14d; SK1024 name-printed t-shirt | Real calls: last eligible day; personalised item (non-returnable, quality ticket) |
 | — | — | any other number | — | Unregistered number |
 
-C13–C15 are real numbers. Keep the GitHub repository **private**. To test any
+C13–C16 are real numbers. Real email addresses are set in `REAL_EMAILS` in
+`app/seed.py` (Upendra and Rishabh); everyone else gets `<firstname>@example.com`, which is
+never sent. Keep the GitHub repository **private**. To test any
 other scenario from a real phone, point it at that customer with
 `POST /admin/map-phone`, then `POST /admin/reset` afterwards to restore it.
 
@@ -106,7 +136,7 @@ Item IDs are `<order_id>-<n>`, e.g. `SK1006-2`.
 python -m venv .venv
 .venv\Scripts\activate            # Windows (macOS/Linux: source .venv/bin/activate)
 pip install -r requirements-dev.txt
-pytest -q                          # 36 tests
+pytest -q                          # 55 tests
 uvicorn app.main:app --reload      # http://127.0.0.1:8000/docs
 ```
 
@@ -133,7 +163,11 @@ once to wake it. For the reviewer period, a paid instance (or Railway) avoids th
 | Variable | Default | Purpose |
 |---|---|---|
 | `DEMO_PHONE` | `+919000000001` | Optional: number for Ananya (C01) |
-| `DB_PATH` | `stylekart.db` | SQLite file location |
+| `DB_PATH` | `stylekart.db` | SQLite file location. A file with an older schema is dropped and reseeded on startup |
+| `BREVO_API_KEY` | unset | Brevo API key. Unset means emails are only logged |
+| `MAIL_FROM` | unset | Verified Brevo sender address (required to send) |
+| `MAIL_FROM_NAME` | `StyleKart Support` | Sender name |
+| `PUBLIC_BASE_URL` | `https://stylekart-returns.onrender.com` | Base of the links in emails |
 | `SLOW_CREATE_SECONDS` | `5` | Delay for Vikram's slow create-return scenario |
 
 ## Example calls

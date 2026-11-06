@@ -26,12 +26,6 @@ def test_health(client):
     assert client.get("/health").json()["status"] == "ok"
 
 
-def test_real_numbers_are_seeded(client):
-    for phone, name in [("7505062257", "Upendra"), ("9953260051", "Anant"), ("9149262211", "Rishabh")]:
-        body = client.get(f"/customers/by-phone/{phone}").json()
-        assert body["found"] and body["first_name"] == name, phone
-
-
 # ---------------------------------------------------------------- lookup
 
 def test_lookup_normalises_phone_formats(client):

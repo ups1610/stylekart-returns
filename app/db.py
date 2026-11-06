@@ -1,4 +1,4 @@
-"""SQLite storage. Six business tables plus an events log used to score evals."""
+"""SQLite storage: business tables, an events log used to score evals, and an email log."""
 
 import os
 import sqlite3
@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS customers (
     first_name    TEXT NOT NULL,
     full_name     TEXT NOT NULL,
     phone         TEXT NOT NULL UNIQUE,
+    email         TEXT NOT NULL,
     address_short TEXT NOT NULL,
     pincode       TEXT NOT NULL
 );
@@ -66,7 +67,49 @@ CREATE TABLE IF NOT EXISTS events (
     status     INTEGER NOT NULL,
     response   TEXT
 );
+
+CREATE TABLE IF NOT EXISTS emails (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id TEXT,
+    to_masked   TEXT NOT NULL,
+    subject     TEXT NOT NULL,
+    kind        TEXT NOT NULL,          -- return_booked | quality_ticket | callback
+    status      TEXT NOT NULL CHECK (status IN ('sent', 'logged', 'failed')),
+    error       TEXT,
+    created_at  TEXT NOT NULL
+);
+
+-- Links sent in emails. The token is the only key, so links can't be guessed.
+CREATE TABLE IF NOT EXISTS links (
+    token      TEXT PRIMARY KEY,
+    kind       TEXT NOT NULL CHECK (kind IN ('return_status', 'bank_details', 'photo_upload')),
+    ref_id     TEXT NOT NULL,           -- return id or ticket id
+    created_at TEXT NOT NULL,
+    used_at    TEXT
+);
+
+-- Bank details for COD refunds. Only the last 4 digits of the account are kept.
+CREATE TABLE IF NOT EXISTS bank_details (
+    return_id      TEXT PRIMARY KEY,
+    account_holder TEXT NOT NULL,
+    account_last4  TEXT NOT NULL,
+    ifsc           TEXT NOT NULL,
+    created_at     TEXT NOT NULL
+);
+
+-- Photos for quality tickets. Only metadata is stored; the file itself is discarded.
+CREATE TABLE IF NOT EXISTS uploads (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id    TEXT NOT NULL,
+    filename     TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size_bytes   INTEGER NOT NULL,
+    created_at   TEXT NOT NULL
+);
 """
+
+ALL_TABLES = ("uploads", "bank_details", "links", "emails", "events",
+              "tickets", "returns", "items", "orders", "customers")
 
 
 def connect() -> sqlite3.Connection:
@@ -83,8 +126,23 @@ def get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None:
         _conn = connect()
+        _drop_if_outdated(_conn)
         _conn.executescript(SCHEMA)
     return _conn
+
+
+def _drop_if_outdated(conn: sqlite3.Connection) -> None:
+    """An older database file (no customers.email) is dropped; the app then reseeds it.
+
+    Everything in here is demo data, so rebuilding is safe and avoids migrations.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(customers)")}
+    if cols and "email" not in cols:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        for table in ALL_TABLES:
+            conn.execute(f"DROP TABLE IF EXISTS {table}")
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = ON")
 
 
 def reset_connection(path: str | None = None) -> None:

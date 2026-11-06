@@ -9,3 +9,9 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.7"
+      - key: BREVO_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: PUBLIC_BASE_URL
+        value: https://stylekart-returns.onrender.com

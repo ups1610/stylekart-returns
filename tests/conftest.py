@@ -7,6 +7,9 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 os.environ.setdefault("SLOW_CREATE_SECONDS", "0")
+# Tests must never send real email, whatever is set in the developer's shell.
+for _var in ("BREVO_API_KEY", "MAIL_FROM", "MAIL_FROM_NAME", "PUBLIC_BASE_URL"):
+    os.environ.pop(_var, None)
 
 from fastapi.testclient import TestClient  # noqa: E402
 
