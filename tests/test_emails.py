@@ -163,7 +163,7 @@ def test_repeat_booking_sends_only_one_email(client, brevo):
 
 def test_say_lines_mention_email_not_sms(client):
     cod = book(client, "SK1019", "SK1019-1").json()
-    assert cod["email_masked"] == "ana****@example.com"
+    assert cod["email_masked"] == "ana****@gmail.com"
     assert cod["cod_link_emailed"] is True and "email" in cod["refund_eta_text"]
     ticket = client.post("/quality-tickets", json={"order_id": "SK1017", "item_id": "SK1017-1",
                                                    "issue": "torn"}).json()
@@ -190,12 +190,9 @@ def test_return_status_link(client, brevo):
     assert page.status_code == 200 and body["return_id"] in page.text and "olive henley" in page.text
 
 
-def test_cod_bank_details_link(client, brevo, monkeypatch):
-    monkeypatch.setenv("BREVO_API_KEY", "test-brevo-key")
-    # Point Anant's dummy address at a real-looking one so it goes through the fake Brevo.
-    with db.tx() as conn:
-        conn.execute("UPDATE customers SET email = 'anant.test@gmail.com' WHERE id = 'C14'")
+def test_cod_bank_details_link(client, brevo):
     book(client, "SK1019", "SK1019-1")
+    assert brevo["calls"][0]["json"]["to"][0]["email"] == "anantjakhmola9@gmail.com"
     bank_url, status_url = links_in(brevo["calls"][0]["json"]["htmlContent"])
     path = path_of(bank_url)
 

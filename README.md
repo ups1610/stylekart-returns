@@ -124,7 +124,7 @@ Delivery dates are relative to today (India time), recomputed on every reset.
 | — | — | any other number | — | Unregistered number |
 
 C13–C16 are real numbers. Real email addresses are set in `REAL_EMAILS` in
-`app/seed.py` (Upendra and Rishabh); everyone else gets `<firstname>@example.com`, which is
+`app/seed.py` (Upendra, Anant and Rishabh); everyone else gets `<firstname>@example.com`, which is
 never sent. Keep the GitHub repository **private**. To test any
 other scenario from a real phone, point it at that customer with
 `POST /admin/map-phone`, then `POST /admin/reset` afterwards to restore it.
