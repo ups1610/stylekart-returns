@@ -142,7 +142,7 @@ def return_body(ret: dict, item: dict, already_existed: bool) -> dict:
         "refund_amount_text": amount_text(ret["refund_amount"]),
         "refund_eta_text": refund_eta_text(item["payment_mode"]),
         "cod_link_emailed": cod,
-        "cod_sms_sent": cod,  # deprecated alias of cod_link_emailed, kept for existing agent configs
+        "email_masked": mailer.mask_email(item["email"]),
         "say": (f"Aapka return book ho gaya hai. Return ID hai {spell_id(ret['id'])}. "
                 f"Pickup {pickup}, {item['address_short']} wale address par hoga."),
     }
@@ -356,7 +356,7 @@ def quality_ticket(body: QualityTicketIn, tasks: BackgroundTasks):
         "ticket_id": tid,
         "ticket_id_spoken": spell_id(tid),
         "photo_link_emailed": True,
-        "photo_link_sms_sent": True,  # deprecated alias of photo_link_emailed
+        "email_masked": mailer.mask_email(item["email"]),
         "say": (f"Maine aapki complaint register kar di hai, ticket number {spell_id(tid)}. "
                 "Item ki photo upload karne ke liye aapke registered email par link bheja hai. "
                 "Team 48 ghante mein contact karegi."),
@@ -392,6 +392,7 @@ def callback(body: CallbackIn, tasks: BackgroundTasks):
         "callback_id": cid,
         "callback_text": when,
         "confirmation_emailed": cust is not None,
+        "email_masked": mailer.mask_email(cust["email"]) if cust else None,
         "say": f"Theek hai, hamari team {when} aapko call karegi.",
     })
 

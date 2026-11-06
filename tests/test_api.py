@@ -132,7 +132,7 @@ def test_happy_path_creates_one_return(client):
     body = r.json()
     assert r.status_code == 200 and body["already_existed"] is False
     assert body["return_id_spoken"].startswith("R T")
-    assert body["cod_sms_sent"] is False
+    assert body["cod_link_emailed"] is False
     state = client.get(f"/admin/state/{ANANYA}").json()
     assert len(state["returns"]) == 1 and state["returns"][0]["reason"] == "size issue"
 
@@ -174,9 +174,9 @@ def test_unavailable_slot_rejected_with_options(client):
     assert r.json()["detail"]["available_slots"]
 
 
-def test_cod_order_sends_sms_link(client):
+def test_cod_order_emails_bank_link(client):
     body = book(client, "SK1012", "SK1012-1").json()
-    assert body["cod_sms_sent"] is True and "bank details" in body["refund_eta_text"]
+    assert body["cod_link_emailed"] is True and "bank details" in body["refund_eta_text"]
 
 
 # ---------------------------------------------------------------- tickets, callbacks, refunds
@@ -184,7 +184,7 @@ def test_cod_order_sends_sms_link(client):
 def test_quality_ticket_for_damaged_expired_item(client):
     body = client.post("/quality-tickets", json={"order_id": "SK1007", "item_id": "SK1007-1",
                                                  "issue": "zip broken"}).json()
-    assert body["ticket_id"].startswith("QT") and body["photo_link_sms_sent"]
+    assert body["ticket_id"].startswith("QT") and body["photo_link_emailed"]
 
 
 def test_callback(client):
@@ -217,7 +217,7 @@ def test_upendra_has_returnable_expired_and_nonreturnable(client):
 
 
 def test_anant_cod_and_in_transit(client):
-    assert book(client, "SK1019", "SK1019-1").json()["cod_sms_sent"] is True
+    assert book(client, "SK1019", "SK1019-1").json()["cod_link_emailed"] is True
     assert elig(client, "SK1020", "SK1020-1").json()["reason_code"] == "NOT_DELIVERED"
 
 

@@ -163,19 +163,22 @@ def test_repeat_booking_sends_only_one_email(client, brevo):
 
 def test_say_lines_mention_email_not_sms(client):
     cod = book(client, "SK1019", "SK1019-1").json()
+    assert cod["email_masked"] == "ana****@example.com"
     assert cod["cod_link_emailed"] is True and "email" in cod["refund_eta_text"]
     ticket = client.post("/quality-tickets", json={"order_id": "SK1017", "item_id": "SK1017-1",
                                                    "issue": "torn"}).json()
     assert ticket["photo_link_emailed"] is True
+    assert ticket["email_masked"] == "pra****@gmail.com"
+    assert "photo_link_sms_sent" not in ticket and "cod_sms_sent" not in cod
     assert "SMS" not in cod["refund_eta_text"] + ticket["say"]
 
 
 def test_callback_emails_known_customer_only(client):
     known = client.post("/callbacks", json={"phone": RISHABH, "topic": "pickup missed"}).json()
-    assert known["confirmation_emailed"] is True
+    assert known["confirmation_emailed"] is True and known["email_masked"] == "ris****@gmail.com"
     assert emails(client, RISHABH)[0]["kind"] == "callback"
     unknown = client.post("/callbacks", json={"phone": "9999999999", "topic": "query"}).json()
-    assert unknown["confirmation_emailed"] is False
+    assert unknown["confirmation_emailed"] is False and unknown["email_masked"] is None
 
 
 # ---------------------------------------------------------------- link pages

@@ -77,8 +77,9 @@ mail provider never breaks or delays the response the voice agent is waiting for
   `GET /admin/state/{phone}`.
 - Links are `PUBLIC_BASE_URL/l/<random token>`. The bank form keeps only the last 4
   account digits, and the photo upload keeps only file metadata (name, type, size).
-- Response fields `cod_link_emailed` and `photo_link_emailed` say whether a link went out.
-  The older `cod_sms_sent` / `photo_link_sms_sent` fields are kept as aliases for existing agent configs.
+- Responses that send an email include `email_masked` (e.g. `pra****@gmail.com`), plus
+  `cod_link_emailed` (returns), `photo_link_emailed` (complaints) or `confirmation_emailed`
+  (callbacks). The old `cod_sms_sent` / `photo_link_sms_sent` fields are gone.
 
 To send real email: create a free Brevo account, verify a sender address
 (Senders & IP → Senders), create an API key (SMTP & API → API keys), then set
