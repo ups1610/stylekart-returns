@@ -13,6 +13,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS customers (
     id            TEXT PRIMARY KEY,
     first_name    TEXT NOT NULL,
+    first_name_hi TEXT NOT NULL,          -- Devanagari, so the voice agent says the name right
     full_name     TEXT NOT NULL,
     phone         TEXT NOT NULL UNIQUE,
     email         TEXT NOT NULL,
@@ -108,6 +109,9 @@ CREATE TABLE IF NOT EXISTS uploads (
 );
 """
 
+# Columns added after the first release. A database file missing any of them is rebuilt.
+REQUIRED_CUSTOMER_COLUMNS = {"email", "first_name_hi"}
+
 ALL_TABLES = ("uploads", "bank_details", "links", "emails", "events",
               "tickets", "returns", "items", "orders", "customers")
 
@@ -132,12 +136,13 @@ def get_conn() -> sqlite3.Connection:
 
 
 def _drop_if_outdated(conn: sqlite3.Connection) -> None:
-    """An older database file (no customers.email) is dropped; the app then reseeds it.
+    """An older database file (missing a REQUIRED_CUSTOMER_COLUMNS column) is dropped;
+    the app then reseeds it.
 
     Everything in here is demo data, so rebuilding is safe and avoids migrations.
     """
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(customers)")}
-    if cols and "email" not in cols:
+    if cols and not REQUIRED_CUSTOMER_COLUMNS <= cols:
         conn.execute("PRAGMA foreign_keys = OFF")
         for table in ALL_TABLES:
             conn.execute(f"DROP TABLE IF EXISTS {table}")

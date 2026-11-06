@@ -102,6 +102,14 @@ REAL_EMAILS = {
     "C13": "pratapsinghupendra96@gmail.com",
     "C14": "anantjakhmola9@gmail.com",
     "C15": "rishabhthakur046@gmail.com",
+    "C16": "jaikhandelwal460@gmail.com",
+}
+
+# First names in Devanagari, so the voice agent pronounces them correctly in Hindi.
+HINDI_FIRST_NAMES = {
+    "C01": "अनन्या", "C02": "रोहन", "C03": "प्रिया", "C04": "मीरा", "C05": "अर्जुन", "C06": "कबीर",
+    "C07": "ईशा", "C08": "देव", "C09": "नेहा", "C10": "साहिल", "C11": "तान्या", "C12": "विक्रम",
+    "C13": "उपेंद्र", "C14": "अनंत", "C15": "ऋषभ", "C16": "जय",
 }
 
 
@@ -120,8 +128,8 @@ def reset_data() -> None:
             conn.execute(f"DELETE FROM {table}")
         for cid, full_name, phone, address, pincode, orders in CUSTOMERS:
             conn.execute(
-                "INSERT INTO customers VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (cid, full_name.split()[0], full_name, normalize_phone(phone),
+                "INSERT INTO customers VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (cid, full_name.split()[0], HINDI_FIRST_NAMES[cid], full_name, normalize_phone(phone),
                  email_for(cid, full_name), address, pincode),
             )
             for order_id, payment, behaviour, items in orders:

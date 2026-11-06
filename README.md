@@ -30,7 +30,7 @@ Interactive docs are served at `/docs`.
 |---|---|---|---|
 | 1 | `GET /customers/by-phone/{phone}` | Action node after greeting | Caller's name, `email_masked` (e.g. `pra****@gmail.com`) and up to 5 recent items. Returns `found: false` (HTTP 200) for an unknown number |
 | 2 | `POST /returns/eligibility` | Action node after item confirmed | `eligible`, `reason_code`, `days_left` / `days_past`, `existing_return_status` (only for `ALREADY_RETURNED`), `say` |
-| 3 | `GET /pickup-slots/{order_id}` | Action node after reason captured | Up to 6 slots with `slot_id` and `slot_text` |
+| 3 | `GET /pickup-slots/{order_id}` | Action node after reason captured | Up to 9 slots across the next 3 days that still have pickups, with `slot_id` and `slot_text` |
 | 4 | `POST /returns` | On-call tool on booking agent, after "haan" | Creates the return; returns spelled-out ID, pickup text, refund ETA. Emails a confirmation (plus a bank-details link for COD) |
 | 5 | `POST /callbacks` | On-call tool on callback agent | Books a callback; emails a confirmation if the number belongs to a customer |
 | 6 | `GET /refunds/{order_id}` | On-call tool on order agent | Read-only refund status |
@@ -96,8 +96,10 @@ Checked in this order; the first failing rule wins.
 4. `WINDOW_EXPIRED`: more than 14 days since delivery (day 14 is still eligible)
 5. `OK`
 
-Pickup slots cover today, tomorrow and the day after, in three windows
-(9–12, 12–4, 4–7). A slot is offered only if it starts at least 2 hours from now.
+Pickup slots: up to 9 slots across the next 3 days that still have pickups, in three
+windows (9–12, 12–4, 4–7). A slot is offered only if it starts at least 2 hours from now;
+a day with no such window (e.g. today, late at night) is skipped, so a call at 11:50 pm
+is offered the next three days.
 
 ## Seed customers
 
@@ -124,7 +126,7 @@ Delivery dates are relative to today (India time), recomputed on every reset.
 | — | — | any other number | — | Unregistered number |
 
 C13–C16 are real numbers. Real email addresses are set in `REAL_EMAILS` in
-`app/seed.py` (Upendra, Anant and Rishabh); everyone else gets `<firstname>@example.com`, which is
+`app/seed.py` (Upendra, Anant, Rishabh and Jai); everyone else gets `<firstname>@example.com`, which is
 never sent. Keep the GitHub repository **private**. To test any
 other scenario from a real phone, point it at that customer with
 `POST /admin/map-phone`, then `POST /admin/reset` afterwards to restore it.

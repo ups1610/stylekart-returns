@@ -141,7 +141,8 @@ def test_slots_at_10am_skip_this_morning(client):
     assert "2026-11-06_morning" not in ids
     assert ids[0] == "2026-11-06_afternoon"
     assert body["slots"][0]["slot_text"] == "aaj dopahar 12 se 4 baje"
-    assert len(ids) == 6
+    assert len(ids) == 8  # today afternoon + evening, then 3 + 3
+    assert sorted({i.split("_")[0] for i in ids}) == ["2026-11-06", "2026-11-07", "2026-11-08"]
 
 
 def test_late_night_call_offers_only_future_days(client):
@@ -149,6 +150,21 @@ def test_late_night_call_offers_only_future_days(client):
     ids = slot_ids(client, "SK1001")
     assert all(not i.startswith("2026-11-06") for i in ids)
     assert ids[0] == "2026-11-07_morning"
+
+
+def test_late_night_call_still_covers_three_days(client):
+    clock.freeze(datetime(2026, 11, 6, 23, 50))
+    body = client.get("/pickup-slots/SK1001").json()
+    ids = [s["slot_id"] for s in body["slots"]]
+    assert len(ids) == 9 and ids[0] == "2026-11-07_morning"
+    assert sorted({i.split("_")[0] for i in ids}) == ["2026-11-07", "2026-11-08", "2026-11-09"]
+    assert body["slots"][-1]["slot_text"] == "9 November ko shaam 4 se 7 baje"
+
+
+def test_third_day_slot_can_be_booked_late_at_night(client):
+    clock.freeze(datetime(2026, 11, 6, 23, 50))
+    r = book(client, "SK1001", "SK1001-1", slot="2026-11-09_evening")
+    assert r.status_code == 200 and r.json()["already_existed"] is False
 
 
 def test_no_pickup_pincode(client):
@@ -239,6 +255,17 @@ def test_real_numbers_are_seeded(client):
                         ("09149262211", "Rishabh Thakur")]:
         body = client.get(f"/customers/by-phone/{phone}").json()
         assert body["found"] and body["full_name"] == name, phone
+
+
+def test_devanagari_first_name(client):
+    assert client.get("/customers/by-phone/7505062257").json()["first_name_hi"] == "उपेंद्र"
+    assert client.get("/customers/by-phone/9166017069").json()["first_name_hi"] == "जय"
+    assert client.get("/customers/by-phone/9999999999").json()["first_name_hi"] is None
+
+
+def test_every_seed_customer_has_devanagari_name(client):
+    from app.seed import CUSTOMERS, HINDI_FIRST_NAMES
+    assert {c[0] for c in CUSTOMERS} == set(HINDI_FIRST_NAMES)
 
 
 def test_upendra_has_returnable_expired_and_nonreturnable(client):

@@ -170,6 +170,7 @@ def customer_by_phone(phone: str):
     if cust is None:
         return ok(ep, req, {
             "found": False,
+            "first_name_hi": None,
             "say": "Is number par koi StyleKart account nahi mila. Kya aap apna registered mobile number bata sakte hain?",
         })
 
@@ -202,6 +203,7 @@ def customer_by_phone(phone: str):
         "found": True,
         "customer_id": cust["id"],
         "first_name": cust["first_name"],
+        "first_name_hi": cust["first_name_hi"],
         "full_name": cust["full_name"],
         "email_masked": mailer.mask_email(cust["email"]),
         "item_count": len(items),

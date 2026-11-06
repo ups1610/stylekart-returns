@@ -92,7 +92,8 @@ def test_admin_state_masks_email(client):
 
 def test_seed_emails(client):
     assert client.get("/customers/by-phone/9000000002").json()["email_masked"] == "roh****@example.com"
-    assert client.get(f"/customers/by-phone/{JAI}").json()["full_name"] == "Jai Khandelwal"
+    jai = client.get(f"/customers/by-phone/{JAI}").json()
+    assert jai["full_name"] == "Jai Khandelwal" and jai["email_masked"] == "jai****@gmail.com"
 
 
 def test_jai_last_day_and_personalised_item(client):
@@ -258,3 +259,22 @@ def test_old_schema_database_is_rebuilt(tmp_path):
     reset_data()
     assert conn.execute("SELECT email FROM customers WHERE id = 'C13'").fetchone()[0] == \
         "pratapsinghupendra96@gmail.com"
+
+
+def test_database_without_devanagari_column_is_rebuilt(tmp_path):
+    path = str(tmp_path / "v2.db")
+    old = sqlite3.connect(path)
+    old.executescript("""
+        CREATE TABLE customers (id TEXT PRIMARY KEY, first_name TEXT NOT NULL, full_name TEXT NOT NULL,
+                                phone TEXT NOT NULL UNIQUE, email TEXT NOT NULL,
+                                address_short TEXT NOT NULL, pincode TEXT NOT NULL);
+        INSERT INTO customers VALUES ('C01', 'Old', 'Old Name', '+910000000000', 'o@example.com', 'x', '0');
+    """)
+    old.commit()
+    old.close()
+
+    db.reset_connection(path)
+    conn = db.get_conn()
+    assert "first_name_hi" in {r["name"] for r in conn.execute("PRAGMA table_info(customers)")}
+    reset_data()
+    assert conn.execute("SELECT first_name_hi FROM customers WHERE id = 'C13'").fetchone()[0] == "उपेंद्र"
