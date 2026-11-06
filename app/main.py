@@ -227,12 +227,13 @@ def eligibility(body: EligibilityIn):
         fail(ep, req, 500, "UPSTREAM_ERROR", "Abhi system se jaankari nahi mil pa rahi hai.")
 
     ret = existing_return(item["id"])
-    result = policy.check(item, ret is not None, ret["id"] if ret else None, clock.today_ist())
+    result = policy.check(item, ret, clock.today_ist())
     return ok(ep, req, {
         "eligible": result.eligible,
         "reason_code": result.reason_code,
         "days_left": result.days_left,
         "days_past": result.days_past,
+        "existing_return_status": result.existing_return_status,
         "item_name": item["name"],
         "say": result.say,
     })
@@ -289,7 +290,7 @@ def create_return(body: ReturnIn, tasks: BackgroundTasks):
         return ok(ep, req, return_body(ret, item, already_existed=True))
 
     # Critical gate: never create a return the policy doesn't allow.
-    result = policy.check(item, False, None, clock.today_ist())
+    result = policy.check(item, None, clock.today_ist())
     if not result.eligible:
         fail(ep, req, 409, result.reason_code, result.say)
 

@@ -29,7 +29,7 @@ Interactive docs are served at `/docs`.
 | # | Endpoint | Ringg mechanism | Purpose |
 |---|---|---|---|
 | 1 | `GET /customers/by-phone/{phone}` | Action node after greeting | Caller's name, `email_masked` (e.g. `pra****@gmail.com`) and up to 5 recent items. Returns `found: false` (HTTP 200) for an unknown number |
-| 2 | `POST /returns/eligibility` | Action node after item confirmed | `eligible`, `reason_code`, `days_left` / `days_past`, `say` |
+| 2 | `POST /returns/eligibility` | Action node after item confirmed | `eligible`, `reason_code`, `days_left` / `days_past`, `existing_return_status` (only for `ALREADY_RETURNED`), `say` |
 | 3 | `GET /pickup-slots/{order_id}` | Action node after reason captured | Up to 6 slots with `slot_id` and `slot_text` |
 | 4 | `POST /returns` | On-call tool on booking agent, after "haan" | Creates the return; returns spelled-out ID, pickup text, refund ETA. Emails a confirmation (plus a bank-details link for COD) |
 | 5 | `POST /callbacks` | On-call tool on callback agent | Books a callback; emails a confirmation if the number belongs to a customer |
@@ -91,7 +91,7 @@ reachable, or the links in the emails won't open.
 Checked in this order; the first failing rule wins.
 
 1. `NOT_DELIVERED`: item not delivered yet
-2. `ALREADY_RETURNED`: a return already exists for the item (existing ID is read back)
+2. `ALREADY_RETURNED`: a return already exists for the item. The ID is read back, and `say` changes with its status: pickup still scheduled (reads the pickup time), picked up, or refunded (reads the amount)
 3. `NON_RETURNABLE`: innerwear, beauty or personalised
 4. `WINDOW_EXPIRED`: more than 14 days since delivery (day 14 is still eligible)
 5. `OK`

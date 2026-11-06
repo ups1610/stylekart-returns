@@ -2,7 +2,8 @@
 
 Rules are checked in a fixed order and the first failing rule wins:
   1. NOT_DELIVERED    item not delivered yet
-  2. ALREADY_RETURNED a return already exists for this item
+  2. ALREADY_RETURNED a return already exists for this item (the `say` line depends on
+                      whether it is still awaiting pickup, picked up, or refunded)
   3. NON_RETURNABLE   innerwear, beauty or personalised items
   4. WINDOW_EXPIRED   more than 14 days since delivery (day 14 is still eligible)
   5. OK
@@ -10,6 +11,8 @@ Rules are checked in a fixed order and the first failing rule wins:
 
 from dataclasses import dataclass
 from datetime import date
+
+from .speech import amount_text, slot_text, spell_id
 
 RETURN_WINDOW_DAYS = 14
 NON_RETURNABLE_CATEGORIES = {"innerwear", "beauty", "personalised"}
@@ -22,16 +25,31 @@ class Eligibility:
     say: str
     days_left: int | None = None
     days_past: int | None = None
+    existing_return_status: str | None = None
 
 
-def check(item: dict, has_return: bool, existing_return_id: str | None, today: date) -> Eligibility:
+def already_returned_say(ret: dict, today: date) -> str:
+    rid = spell_id(ret["id"])
+    if ret["status"] == "refunded":
+        return (f"Is item ka return ho chuka hai aur {amount_text(ret['refund_amount'])} ka refund "
+                f"original payment method mein bhej diya gaya hai. Return ID {rid}.")
+    if ret["status"] == "picked_up":
+        return (f"Is item ka return ho chuka hai, pickup ho gaya hai. Return ID {rid}. "
+                "Refund 5 se 7 din mein aayega.")
+    day, _, period = ret["slot_id"].partition("_")
+    return (f"Is item ka return pehle se book hai. Return ID {rid}. "
+            f"Pickup {slot_text(date.fromisoformat(day), period, today)} hoga.")
+
+
+def check(item: dict, existing_return: dict | None, today: date) -> Eligibility:
+    """`existing_return` is the item's row from the returns table, or None."""
     if item["status"] != "delivered" or not item["delivered_on"]:
         return Eligibility(False, "NOT_DELIVERED",
                            "Yeh item abhi deliver nahi hua hai. Delivery ke baad hi return ho sakta hai.")
 
-    if has_return:
-        return Eligibility(False, "ALREADY_RETURNED",
-                           f"Is item ka return pehle se book hai. Return ID {' '.join(existing_return_id or '')} hai.")
+    if existing_return is not None:
+        return Eligibility(False, "ALREADY_RETURNED", already_returned_say(existing_return, today),
+                           existing_return_status=existing_return["status"])
 
     if item["category"] in NON_RETURNABLE_CATEGORIES:
         return Eligibility(False, "NON_RETURNABLE",

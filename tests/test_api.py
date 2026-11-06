@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from app import clock
+from app import clock, db
 from app.seed import reset_data
 
 ANANYA = "+919000000001"
@@ -86,6 +86,37 @@ def test_already_returned_reads_back_id(client):
     body = elig(client, "SK1011", "SK1011-1").json()
     assert body["reason_code"] == "ALREADY_RETURNED"
     assert "R T 4 0 0 1 1" in body["say"]
+
+
+def test_already_returned_pickup_scheduled(client):
+    # Dev's return: pickup booked for tomorrow evening.
+    body = elig(client, "SK1011", "SK1011-1").json()
+    assert body["existing_return_status"] == "pickup_scheduled"
+    assert body["say"] == ("Is item ka return pehle se book hai. Return ID R T 4 0 0 1 1. "
+                           "Pickup kal shaam 4 se 7 baje hoga.")
+
+
+def test_already_returned_picked_up(client):
+    with db.tx() as conn:
+        conn.execute("UPDATE returns SET status = 'picked_up' WHERE id = 'RT40011'")
+    body = elig(client, "SK1011", "SK1011-1").json()
+    assert body["reason_code"] == "ALREADY_RETURNED" and body["existing_return_status"] == "picked_up"
+    assert body["say"] == ("Is item ka return ho chuka hai, pickup ho gaya hai. Return ID R T 4 0 0 1 1. "
+                           "Refund 5 se 7 din mein aayega.")
+
+
+def test_already_returned_refunded(client):
+    # Rishabh's puffer jacket: returned and refunded.
+    body = elig(client, "SK1022", "SK1022-1").json()
+    assert body["reason_code"] == "ALREADY_RETURNED" and body["existing_return_status"] == "refunded"
+    assert body["say"] == ("Is item ka return ho chuka hai aur 3,999 rupaye ka refund original payment "
+                           "method mein bhej diya gaya hai. Return ID R T 4 0 0 2 2.")
+    assert "pehle se book" not in body["say"]
+
+
+def test_existing_return_status_null_when_not_already_returned(client):
+    assert elig(client, "SK1001", "SK1001-1").json()["existing_return_status"] is None
+    assert elig(client, "SK1007", "SK1007-1").json()["existing_return_status"] is None
 
 
 def test_item_from_wrong_order_is_404(client):
